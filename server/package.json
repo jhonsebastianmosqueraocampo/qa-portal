@@ -1,0 +1,41 @@
+{
+  "name": "qa-portal-server",
+  "version": "1.0.0",
+  "description": "API del qa-portal: sprints, ejecuciones de pruebas, resultados del CI y métricas.",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "seed": "node scripts/seed.js",
+    "user:create": "node scripts/create-user.js",
+    "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\"",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.1",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.11.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9",
+    "supertest": "^7.3.1"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}

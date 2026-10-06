@@ -1,0 +1,367 @@
+{
+  "info": {
+    "name": "qa-portal API",
+    "description": "Colección para probar la API del qa-portal sin interfaz.\n\n1. Importa este archivo en Postman (File > Import).\n2. En la pestaña Variables de la colección completa adminEmail, adminPassword (los de tu .env: SEED_ADMIN_*) y ciToken (CI_RESULTS_TOKEN). Usa la columna 'Current value' para que no se exporten.\n3. Ejecuta primero 'Auth > Login': Postman guarda la cookie de sesión y la envía en las siguientes peticiones.\n\nLas peticiones 'Crear sprint' y 'Ejecutar pruebas' guardan automáticamente sprintId y runId para usarlos después.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000/api"
+    },
+    {
+      "key": "adminEmail",
+      "value": ""
+    },
+    {
+      "key": "adminPassword",
+      "value": ""
+    },
+    {
+      "key": "ciToken",
+      "value": ""
+    },
+    {
+      "key": "sprintId",
+      "value": ""
+    },
+    {
+      "key": "taskId",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('No devuelve el hash de la contraseña', () => pm.expect(pm.response.json().user.passwordHash).to.be.undefined);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Usuario actual",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auth/me"
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sprints",
+      "item": [
+        {
+          "name": "Listar sprints (filtro por estado y búsqueda)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/sprints?status=active&q=UA"
+          }
+        },
+        {
+          "name": "Crear sprint",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('sprintId', pm.response.json().sprint._id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/sprints",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"number\": 3,\n  \"name\": \"Sprint 03\",\n  \"startDate\": \"2026-11-02\",\n  \"endDate\": \"2026-11-13\",\n  \"links\": {\n    \"testDesign\": \"https://tu-empresa.atlassian.net/wiki/spaces/QA/pages/2001\",\n    \"testExecution\": \"\",\n    \"regressionSummary\": \"https://tu-empresa.atlassian.net/wiki/spaces/QA/pages/2003\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Detalle del sprint (tareas, cobertura, última ejecución)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/sprints/{{sprintId}}"
+          }
+        },
+        {
+          "name": "Actualizar sprint (enlace de ejecución)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/sprints/{{sprintId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"links\": {\n    \"testExecution\": \"https://tu-empresa.atlassian.net/wiki/spaces/QA/pages/2002\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Validación: enlace inseguro (espera 400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/sprints/{{sprintId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"links\": { \"testDesign\": \"javascript:alert(1)\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Agregar tarea",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('taskId', pm.response.json().task._id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/sprints/{{sprintId}}/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"UA-150\",\n  \"title\": \"Bloquear usuario tras 3 intentos fallidos\",\n  \"jiraUrl\": \"https://tu-empresa.atlassian.net/browse/UA-150\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Actualizar tarea",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/sprints/{{sprintId}}/tasks/{{taskId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bloquear usuario tras 3 intentos\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Registrar resultado manual de la tarea",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/sprints/{{sprintId}}/tasks/{{taskId}}/manual-result",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"result\": \"passed\",\n  \"comment\": \"Probado en Chrome y Edge\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar tarea",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/sprints/{{sprintId}}/tasks/{{taskId}}"
+          }
+        },
+        {
+          "name": "Eliminar sprint (solo admin)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/sprints/{{sprintId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ejecuciones",
+      "item": [
+        {
+          "name": "Ejecutar regresión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 202 (aceptada)', () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('runId', pm.response.json().run._id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/runs",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"suite\": \"regression\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Ejecutar pruebas del sprint",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.collectionVariables.set('runId', pm.response.json().run._id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/runs",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"suite\": \"sprint\",\n  \"sprintId\": \"{{sprintId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Estado / detalle de la ejecución (repetir para ver el avance)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/runs/{{runId}}"
+          }
+        },
+        {
+          "name": "Última regresión",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/runs/latest?suite=regression"
+          }
+        },
+        {
+          "name": "Historial con filtros",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/runs?suite=regression&status=failed&from=2026-09-01&page=1&limit=20"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pipeline (token de CI)",
+      "item": [
+        {
+          "name": "Enviar resultado como el pipeline",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ciToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/ci/results",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"suite\": \"regression\",\n  \"trigger\": \"nightly\",\n  \"status\": \"failed\",\n  \"ci\": { \"provider\": \"gitlab\", \"pipelineId\": \"123456\", \"jobUrl\": \"https://gitlab.com/usuario/qa-automation/-/jobs/1\" },\n  \"reportUrl\": \"https://gitlab.com/usuario/qa-automation/-/jobs/1/artifacts/file/cypress/reports/index.html\",\n  \"stats\": { \"total\": 3, \"passed\": 2, \"failed\": 1, \"pending\": 0, \"skipped\": 0, \"durationMs\": 12000 },\n  \"tests\": [\n    { \"title\": \"UA-001 inicia sesión con credenciales válidas\", \"state\": \"passed\", \"durationMs\": 4000 },\n    { \"title\": \"UA-002 muestra error con contraseña inválida\", \"state\": \"failed\", \"durationMs\": 5000 },\n    { \"title\": \"UA-003 muestra error con usuario inexistente\", \"state\": \"passed\", \"durationMs\": 3000 }\n  ]\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Informes",
+      "item": [
+        {
+          "name": "Informe sprint a sprint",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/reports/sprints"
+          }
+        }
+      ]
+    }
+  ]
+}

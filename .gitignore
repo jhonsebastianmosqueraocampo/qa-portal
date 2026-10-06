@@ -1,0 +1,20 @@
+# Dependencias
+node_modules/
+
+# Secretos: NUNCA se suben. Solo .env.example va al repo
+.env
+.env.*
+!.env.example
+
+# Builds y reportes
+dist/
+build/
+coverage/
+
+# Varios
+*.log
+logs/
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
