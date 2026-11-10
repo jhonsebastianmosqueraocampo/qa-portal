@@ -63,6 +63,8 @@ export interface TestResult {
   file: string;
   state: TestState;
   durationMs: number;
+  kind?: CaseKind;
+  reason?: string;
 }
 
 export interface RunStats {
@@ -92,28 +94,53 @@ export interface Run {
   createdAt: string;
 }
 
-export interface TaskCoverage {
-  taskId: string;
-  key: string;
-  /** automated = su ID aparece en los resultados de Cypress; manual = no aparece */
-  type: 'automated' | 'manual';
-  testCount: number;
-  result: ManualResult;
-  /** Casos de prueba de Cypress de la tarea (una tarea puede tener varios) */
-  tests: Pick<TestResult, 'title' | 'description' | 'state' | 'durationMs' | 'group'>[];
+/** Cómo está declarado el caso en qa-automation: it() | pendiente() | manual() */
+export type CaseKind = 'automated' | 'pending' | 'manual';
+/** notRun: automatizado pero no corrió en la última ejecución (p. ej. caso sensible no activado) */
+export type CaseResult = 'passed' | 'failed' | 'pending' | 'notRun';
+
+export interface TaskCase {
+  description: string;
+  kind: CaseKind;
+  /** Motivo de pendiente / manual / sensible */
+  reason: string;
+  group: string;
+  durationMs: number;
+  result: CaseResult;
+  /** Registro manual (solo casos pendientes y manuales) */
+  manual?: { comment: string; testedAt: string | null; testedBy: string } | null;
 }
 
-export interface TypeSummary {
+export interface KindSummary {
   total: number;
   passed: number;
   failed: number;
-  pending?: number;
+  /** Sin resultado todavía (sin probar o sin ejecutar) */
+  pending: number;
+}
+
+export interface CasesSummary {
+  total: number;
+  automated: KindSummary;
+  pending: KindSummary;
+  manual: KindSummary;
+}
+
+/** automated: todos sus casos en Cypress · manual: todos a mano · mixed · none: sin casos */
+export type TaskType = 'automated' | 'manual' | 'mixed' | 'none';
+
+export interface TaskCoverage {
+  taskId: string;
+  key: string;
+  type: TaskType;
+  result: ManualResult;
+  summary: CasesSummary;
+  cases: TaskCase[];
 }
 
 export interface Coverage {
   totalTasks: number;
-  automated: TypeSummary;
-  manual: TypeSummary;
+  cases: CasesSummary;
   tasks: TaskCoverage[];
 }
 
@@ -159,7 +186,8 @@ export interface SprintReport {
     Sprint,
     '_id' | 'number' | 'name' | 'folder' | 'status' | 'startDate' | 'endDate' | 'links'
   >;
-  tasks: { total: number; automated: TypeSummary; manual: TypeSummary };
+  tasks: { total: number; withoutCases: number };
+  cases: CasesSummary;
   sprintRuns: RunGroupSummary;
   regression: RunGroupSummary;
 }

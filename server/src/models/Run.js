@@ -10,6 +10,9 @@ const testResultSchema = new mongoose.Schema(
   {
     title: { type: String, required: true }, // "UA-004 cierra sesión y vuelve al login"
     description: { type: String, required: true }, // "cierra sesión y vuelve al login"
+    // Tipo de caso según cómo está escrito en qa-automation: it() | pendiente() | manual()
+    kind: { type: String, enum: ['automated', 'pending', 'manual'], default: 'automated' },
+    reason: { type: String, default: '' }, // motivo de pendiente/manual/sensible
     jiraKeys: { type: [String], default: [] }, // ["UA-004"]
     group: { type: String, default: 'regression' }, // "regression" | "sprint-01"...
     file: { type: String, default: '' },

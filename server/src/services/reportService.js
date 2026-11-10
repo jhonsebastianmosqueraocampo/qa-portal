@@ -11,7 +11,7 @@ const RUN_FIELDS = 'suite status trigger stats reportUrl createdAt finishedAt';
  * - Ejecuciones de las pruebas del sprint (con su tasa de éxito).
  * - Ejecuciones de regresión hechas dentro de las fechas del sprint.
  *
- * Tasa de éxito = pruebas que pasaron / pruebas ejecutadas (siempre a nivel de prueba).
+ * Tasa de éxito = pruebas que pasaron / pruebas ejecutadas (las pendientes y manuales no cuentan).
  */
 export async function getSprintReports() {
   const sprints = await Sprint.find().sort({ number: -1 });
@@ -40,9 +40,10 @@ export async function getSprintReports() {
         },
         tasks: {
           total: coverage.totalTasks,
-          automated: coverage.automated,
-          manual: coverage.manual,
+          withoutCases: coverage.tasks.filter((t) => t.type === 'none').length,
         },
+        // Casos por tipo: automatizados (Cypress), pendientes de automatizar y manuales.
+        cases: coverage.cases,
         sprintRuns: summarize(sprintRuns),
         regression: summarize(regressionRuns),
       };
@@ -63,8 +64,11 @@ function findRegressionRunsDuring(sprint) {
     .lean();
 }
 
+/** Pruebas que se ejecutaron (pasaron o fallaron): las pendientes/manuales no cuentan. */
+const executed = (stats) => stats.passed + stats.failed;
+
 function summarize(runs) {
-  const tests = runs.reduce((sum, run) => sum + run.stats.total, 0);
+  const tests = runs.reduce((sum, run) => sum + executed(run.stats), 0);
   const passed = runs.reduce((sum, run) => sum + run.stats.passed, 0);
   return {
     total: runs.length,
@@ -80,7 +84,9 @@ function summarize(runs) {
       trigger: run.trigger,
       stats: run.stats,
       reportUrl: run.reportUrl,
-      successRate: run.stats.total ? Math.round((run.stats.passed / run.stats.total) * 100) : null,
+      successRate: executed(run.stats)
+        ? Math.round((run.stats.passed / executed(run.stats)) * 100)
+        : null,
     })),
   };
 }

@@ -95,27 +95,36 @@ toca `services/ci/`.
 
 Todos bajo `/api`. Salvo login, health y `/ci/results`, requieren sesión.
 
-| Método | Ruta                                       | Descripción                                                                                                                    |
-| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/health`                                  | Estado del servidor                                                                                                            |
-| POST   | `/auth/login`                              | Inicia sesión (cookie httpOnly). Limitado a 10 intentos/15 min                                                                 |
-| POST   | `/auth/logout`                             | Cierra sesión                                                                                                                  |
-| GET    | `/auth/me`                                 | Usuario actual                                                                                                                 |
-| GET    | `/sprints?status&q`                        | Lista con filtros: `status` (`planned` pendiente, `active`, `closed` finalizado) y `q` (busca en sprint e ID/título de tareas) |
-| POST   | `/sprints`                                 | Crea un sprint (`startDate` y `endDate` obligatorias: definen su estado)                                                       |
-| GET    | `/sprints/:id`                             | Detalle: tareas, cobertura y última ejecución                                                                                  |
-| PATCH  | `/sprints/:id`                             | Edita datos o enlaces de exploratorias                                                                                         |
-| DELETE | `/sprints/:id`                             | Elimina (admin). El historial de ejecuciones se conserva                                                                       |
-| POST   | `/sprints/:id/tasks`                       | Agrega una tarea (`key`, `title`, `jiraUrl`)                                                                                   |
-| PATCH  | `/sprints/:id/tasks/:taskId`               | Edita una tarea                                                                                                                |
-| DELETE | `/sprints/:id/tasks/:taskId`               | Elimina una tarea                                                                                                              |
-| PUT    | `/sprints/:id/tasks/:taskId/manual-result` | Resultado de la prueba manual: `pending`, `passed` o `failed` + comentario                                                     |
-| POST   | `/runs`                                    | **Ejecutar pruebas** (`suite`: `regression` o `sprint` + `sprintId`) → 202                                                     |
-| GET    | `/runs`                                    | Historial: filtros `suite`, `sprintId`, `status`, `from`, `to`, `page`, `limit`                                                |
-| GET    | `/runs/latest?suite=regression`            | Última ejecución de una suite                                                                                                  |
-| GET    | `/runs/:id`                                | Detalle con cada prueba: ID, descripción, resultado, duración                                                                  |
-| POST   | `/ci/results`                              | Resultados del pipeline (`Authorization: Bearer <CI_RESULTS_TOKEN>`)                                                           |
-| GET    | `/reports/sprints`                         | Informe por sprint: tareas planeadas/automatizadas, ejecuciones y regresión                                                    |
+| Método | Ruta                                       | Descripción                                                                                                                            |
+| ------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/health`                                  | Estado del servidor                                                                                                                    |
+| POST   | `/auth/login`                              | Inicia sesión (cookie httpOnly). Limitado a 10 intentos/15 min                                                                         |
+| POST   | `/auth/logout`                             | Cierra sesión                                                                                                                          |
+| GET    | `/auth/me`                                 | Usuario actual                                                                                                                         |
+| GET    | `/sprints?status&q`                        | Lista con filtros: `status` (`planned` pendiente, `active`, `closed` finalizado) y `q` (busca en sprint e ID/título de tareas)         |
+| POST   | `/sprints`                                 | Crea un sprint (`startDate` y `endDate` obligatorias: definen su estado)                                                               |
+| GET    | `/sprints/:id`                             | Detalle: tareas, cobertura y última ejecución                                                                                          |
+| PATCH  | `/sprints/:id`                             | Edita datos o enlaces de exploratorias                                                                                                 |
+| DELETE | `/sprints/:id`                             | Elimina (admin). El historial de ejecuciones se conserva                                                                               |
+| POST   | `/sprints/:id/tasks`                       | Agrega una tarea (`key`, `title`, `jiraUrl`)                                                                                           |
+| PATCH  | `/sprints/:id/tasks/:taskId`               | Edita una tarea                                                                                                                        |
+| DELETE | `/sprints/:id/tasks/:taskId`               | Elimina una tarea                                                                                                                      |
+| PUT    | `/sprints/:id/tasks/:taskId/manual-result` | Resultado de la prueba manual: `pending`, `passed` o `failed` + comentario                                                             |
+| PUT    | `/sprints/:id/cases/manual-result`         | Resultado manual de un **caso** (`taskKey`, `caseDescription`, `result`, `comment`): casos `pendiente()` y `manual()` de qa-automation |
+| POST   | `/runs`                                    | **Ejecutar pruebas** (`suite`: `regression` o `sprint` + `sprintId`) → 202                                                             |
+| GET    | `/runs`                                    | Historial: filtros `suite`, `sprintId`, `status`, `from`, `to`, `page`, `limit`                                                        |
+| GET    | `/runs/latest?suite=regression`            | Última ejecución de una suite                                                                                                          |
+| GET    | `/runs/:id`                                | Detalle con cada prueba: ID, descripción, resultado, duración                                                                          |
+| POST   | `/ci/results`                              | Resultados del pipeline (`Authorization: Bearer <CI_RESULTS_TOKEN>`)                                                                   |
+| GET    | `/reports/sprints`                         | Informe por sprint: tareas planeadas/automatizadas, ejecuciones y regresión                                                            |
+
+### Casos de prueba de cada tarea
+
+La lista de casos sale de qa-automation: cada ejecución trae todos los casos, también los
+`pendiente()` (`[PENDIENTE] UA-1 … — motivo`) y `manual()` (`[MANUAL] UA-1 … — motivo`) que Cypress
+no ejecuta. El portal arma por tarea los casos **automatizados** (resultado de Cypress), **por
+automatizar** y **manuales** (resultado registrado a mano por caso). La tasa de éxito solo cuenta
+las pruebas ejecutadas.
 
 ### Estado del sprint
 

@@ -119,7 +119,7 @@ describe('Sprints y tareas', () => {
     assert.equal(res.status, 409);
   });
 
-  it('calcula la cobertura a partir de los resultados del pipeline', async () => {
+  it('arma los casos de cada tarea desde el reporte (automatizados, pendientes y manuales)', async () => {
     const res = await request(app)
       .post('/api/ci/results')
       .set('Authorization', CI_AUTH)
@@ -129,7 +129,7 @@ describe('Sprints y tareas', () => {
         trigger: 'nightly',
         status: 'failed',
         ci: { provider: 'gitlab', pipelineId: '999' },
-        stats: { total: 2, passed: 1, failed: 1, durationMs: 9000 },
+        stats: { total: 4, passed: 1, failed: 1, pending: 2, durationMs: 9000 },
         tests: [
           { title: 'UA-004 cierra sesión y vuelve al login', state: 'passed', durationMs: 4000 },
           {
@@ -137,37 +137,92 @@ describe('Sprints y tareas', () => {
             state: 'failed',
             durationMs: 5000,
           },
+          {
+            title: '[PENDIENTE] UA-004 cierra sesión en dos pestañas — falta desplegar en PRE',
+            state: 'pending',
+          },
+          {
+            title: '[MANUAL] UA-004 revisa el correo de aviso — necesita un buzón real',
+            state: 'pending',
+          },
         ],
       });
     assert.equal(res.status, 200);
 
     const detail = await agent.get(`/api/sprints/${sprintId}`);
     const byKey = Object.fromEntries(detail.body.coverage.tasks.map((t) => [t.key, t]));
-    // UA-004 aparece en los resultados de Cypress → automatizada (con su último resultado)
-    assert.equal(byKey['UA-004'].type, 'automated');
-    assert.equal(byKey['UA-004'].testCount, 2);
-    assert.equal(byKey['UA-004'].result, 'failed');
-    // UA-010 no aparece → manual, pendiente hasta que se registre su resultado
-    assert.equal(byKey['UA-010'].type, 'manual');
-    assert.equal(byKey['UA-010'].result, 'pending');
+    const ua004 = byKey['UA-004'];
+    // Tarea mixta: 2 casos automatizados (1 pasó, 1 falló), 1 pendiente y 1 manual
+    assert.equal(ua004.type, 'mixed');
+    assert.equal(ua004.result, 'failed');
+    assert.deepEqual(ua004.summary.automated, { total: 2, passed: 1, failed: 1, pending: 0 });
+    assert.deepEqual(ua004.summary.pending, { total: 1, passed: 0, failed: 0, pending: 1 });
+    assert.deepEqual(ua004.summary.manual, { total: 1, passed: 0, failed: 0, pending: 1 });
+    const pendiente = ua004.cases.find((c) => c.kind === 'pending');
+    assert.equal(pendiente.description, 'cierra sesión en dos pestañas');
+    assert.equal(pendiente.reason, 'falta desplegar en PRE');
+    // UA-010 no tiene casos en Cypress todavía
+    assert.equal(byKey['UA-010'].type, 'none');
     assert.equal(detail.body.lastRun.tests[0].description, 'cierra sesión y vuelve al login');
   });
 
-  it('registra el resultado manual con quién y cuándo', async () => {
+  it('registra el resultado manual por caso con quién y cuándo', async () => {
+    const res = await agent.put(`/api/sprints/${sprintId}/cases/manual-result`).send({
+      taskKey: 'ua-004',
+      caseDescription: 'revisa el correo de aviso',
+      result: 'passed',
+      comment: 'Correo recibido en el buzón de pruebas',
+    });
+    assert.equal(res.status, 200);
+    assert.ok(res.body.result.testedAt);
+
+    // También se puede probar a mano un caso pendiente de automatizar
+    await agent.put(`/api/sprints/${sprintId}/cases/manual-result`).send({
+      taskKey: 'UA-004',
+      caseDescription: 'cierra sesión en dos pestañas',
+      result: 'failed',
+    });
+
+    const after = await agent.get(`/api/sprints/${sprintId}`);
+    const ua004 = after.body.coverage.tasks.find((t) => t.key === 'UA-004');
+    const manual = ua004.cases.find((c) => c.kind === 'manual');
+    assert.equal(manual.result, 'passed');
+    assert.equal(manual.manual.testedBy, 'QA Test');
+    assert.equal(manual.manual.comment, 'Correo recibido en el buzón de pruebas');
+    assert.deepEqual(after.body.coverage.cases.pending, {
+      total: 1,
+      passed: 0,
+      failed: 1,
+      pending: 0,
+    });
+  });
+
+  it('no permite registrar a mano un caso automatizado ni uno inexistente', async () => {
+    const automatizado = await agent.put(`/api/sprints/${sprintId}/cases/manual-result`).send({
+      taskKey: 'UA-004',
+      caseDescription: 'cierra sesión y vuelve al login',
+      result: 'passed',
+    });
+    assert.equal(automatizado.status, 409);
+    const inexistente = await agent.put(`/api/sprints/${sprintId}/cases/manual-result`).send({
+      taskKey: 'UA-004',
+      caseDescription: 'no existe',
+      result: 'passed',
+    });
+    assert.equal(inexistente.status, 404);
+  });
+
+  it('una tarea sin casos en Cypress se registra a nivel de tarea', async () => {
     const detail = await agent.get(`/api/sprints/${sprintId}`);
     const manualTask = detail.body.sprint.tasks.find((t) => t.key === 'UA-010');
-
     const res = await agent
       .put(`/api/sprints/${sprintId}/tasks/${manualTask._id}/manual-result`)
       .send({ result: 'passed', comment: 'Probado en Chrome y Edge' });
     assert.equal(res.status, 200);
-    assert.equal(res.body.task.manualResult, 'passed');
-    assert.ok(res.body.task.manualTestedAt);
-
     const after = await agent.get(`/api/sprints/${sprintId}`);
+    assert.equal(after.body.coverage.tasks.find((t) => t.key === 'UA-010').result, 'passed');
     const task = after.body.sprint.tasks.find((t) => t.key === 'UA-010');
     assert.equal(task.manualTestedBy.name, 'QA Test');
-    assert.deepEqual(after.body.coverage.manual, { total: 1, passed: 1, failed: 0, pending: 0 });
   });
 
   it('rechaza un resultado manual inválido', async () => {
@@ -258,11 +313,9 @@ describe('Informes por sprint', () => {
     const res = await agent.get('/api/reports/sprints');
     assert.equal(res.status, 200);
     const [report] = res.body.reports;
-    assert.deepEqual(report.tasks, {
-      total: 2,
-      automated: { total: 1, passed: 0, failed: 1 },
-      manual: { total: 1, passed: 1, failed: 0, pending: 0 },
-    });
+    assert.deepEqual(report.tasks, { total: 2, withoutCases: 1 });
+    assert.equal(report.cases.total, 4);
+    assert.equal(report.cases.automated.total, 2);
     // Ejecución del sprint recibida antes: 1 de 2 pruebas pasó
     assert.equal(report.sprintRuns.total, 1);
     assert.equal(report.sprintRuns.successRate, 50);

@@ -18,15 +18,16 @@ import {
   Typography,
 } from '@mui/material';
 import { Fragment, useState } from 'react';
-import type { Coverage, Task, TaskCoverage } from '../api/types';
+import type { Coverage, Task, TaskCase, TaskCoverage } from '../api/types';
 import { formatDateTime, formatDuration } from '../utils/format';
+import { resumenCasos } from '../utils/casos';
 import { ExternalLink } from './common';
-import { TestStateChip } from './StatusChips';
-import { TaskResultChip, TaskTypeChip } from './TaskResults';
+import { CaseKindChip, TaskResultChip, TaskTypeChip, type ManualTarget } from './TaskResults';
 
 /**
- * Tabla de tareas del sprint. Las tareas automatizadas se pueden desplegar para ver cada
- * caso de prueba de Cypress que lleva su ID (una tarea puede tener varios).
+ * Tabla de tareas del sprint. Cada tarea se despliega para ver sus casos de prueba, tal como
+ * están declarados en qa-automation (automatizado, por automatizar o manual). Los casos por
+ * automatizar y los manuales se registran a mano, caso por caso.
  */
 export function SprintTasksTable(props: {
   tasks: Task[];
@@ -34,11 +35,11 @@ export function SprintTasksTable(props: {
   readOnly: boolean;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
-  onManualResult: (task: Task) => void;
+  onManualResult: (target: ManualTarget) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const coverageByTask = new Map(props.coverage.tasks.map((item) => [item.taskId, item]));
-  const columns = props.readOnly ? 5 : 6;
+  const columns = props.readOnly ? 6 : 7;
 
   return (
     <TableContainer>
@@ -48,20 +49,22 @@ export function SprintTasksTable(props: {
             <TableCell sx={{ width: 48 }} />
             <TableCell sx={{ width: 100 }}>ID</TableCell>
             <TableCell>Tarea</TableCell>
-            <TableCell sx={{ width: 130 }}>Tipo</TableCell>
-            <TableCell sx={{ width: 240 }}>Resultado</TableCell>
+            <TableCell sx={{ width: 120 }}>Tipo</TableCell>
+            <TableCell sx={{ width: 230 }}>Casos</TableCell>
+            <TableCell sx={{ width: 150 }}>Resultado</TableCell>
             {!props.readOnly && <TableCell sx={{ width: 90 }} />}
           </TableRow>
         </TableHead>
         <TableBody>
           {props.tasks.map((task) => {
             const coverage = coverageByTask.get(task._id);
+            const hasCases = !!coverage && coverage.cases.length > 0;
             const isOpen = expanded === task._id;
             return (
               <Fragment key={task._id}>
                 <TableRow hover sx={{ '& > td': { borderBottom: isOpen ? 'none' : undefined } }}>
                   <TableCell>
-                    {coverage?.type === 'automated' && (
+                    {hasCases && (
                       <IconButton
                         size="small"
                         onClick={() => setExpanded(isOpen ? null : task._id)}
@@ -82,14 +85,17 @@ export function SprintTasksTable(props: {
                     )}
                   </TableCell>
                   <TableCell>
-                    <TaskTypeChip type={coverage?.type ?? 'manual'} />
+                    <TaskTypeChip type={coverage?.type ?? 'none'} />
                   </TableCell>
                   <TableCell>
-                    <ResultCell
+                    <CasesCell coverage={coverage} />
+                  </TableCell>
+                  <TableCell>
+                    <TaskResultCell
                       task={task}
                       coverage={coverage}
                       readOnly={props.readOnly}
-                      onManualResult={() => props.onManualResult(task)}
+                      onManualResult={() => props.onManualResult({ type: 'task', task })}
                     />
                   </TableCell>
                   {!props.readOnly && (
@@ -107,11 +113,16 @@ export function SprintTasksTable(props: {
                     </TableCell>
                   )}
                 </TableRow>
-                {coverage?.type === 'automated' && (
+                {hasCases && (
                   <TableRow>
                     <TableCell colSpan={columns} sx={{ py: 0 }}>
                       <Collapse in={isOpen} unmountOnExit>
-                        <TestCases tests={coverage.tests} />
+                        <CasesTable
+                          taskKey={task.key}
+                          cases={coverage.cases}
+                          readOnly={props.readOnly}
+                          onManualResult={props.onManualResult}
+                        />
                       </Collapse>
                     </TableCell>
                   </TableRow>
@@ -125,26 +136,39 @@ export function SprintTasksTable(props: {
   );
 }
 
-function ResultCell(props: {
+function CasesCell({ coverage }: { coverage?: TaskCoverage }) {
+  if (!coverage || coverage.cases.length === 0) {
+    return (
+      <Typography variant="caption" color="text.secondary">
+        Aún no hay casos en Cypress con este ID
+      </Typography>
+    );
+  }
+  const { summary } = coverage;
+  const sinProbar = summary.pending.pending + summary.manual.pending;
+  return (
+    <>
+      <Typography variant="body2">{resumenCasos(summary)}</Typography>
+      {sinProbar > 0 && (
+        <Typography variant="caption" color="warning.main">
+          {sinProbar} por probar a mano
+        </Typography>
+      )}
+    </>
+  );
+}
+
+function TaskResultCell(props: {
   task: Task;
   coverage?: TaskCoverage;
   readOnly: boolean;
   onManualResult: () => void;
 }) {
   const { task, coverage } = props;
+  // Tarea con casos: su resultado resume los de sus casos.
+  if (coverage && coverage.cases.length > 0) return <TaskResultChip result={coverage.result} />;
 
-  if (coverage?.type === 'automated') {
-    return (
-      <>
-        <TaskResultChip result={coverage.result} />
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-          {coverage.testCount === 1 ? '1 caso de prueba' : `${coverage.testCount} casos de prueba`}{' '}
-          en Cypress
-        </Typography>
-      </>
-    );
-  }
-
+  // Tarea sin casos en Cypress: se registra a nivel de tarea.
   const testedBy =
     task.manualTestedBy && typeof task.manualTestedBy === 'object' ? task.manualTestedBy.name : '';
   return (
@@ -157,46 +181,101 @@ function ResultCell(props: {
           </Button>
         )}
       </Stack>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-        {task.manualTestedAt
-          ? `${testedBy} · ${formatDateTime(task.manualTestedAt)}`
-          : 'Prueba manual sin registrar'}
-      </Typography>
-      {task.manualComment && (
+      {task.manualTestedAt && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-          «{task.manualComment}»
+          {testedBy} · {formatDateTime(task.manualTestedAt)}
         </Typography>
       )}
     </>
   );
 }
 
-function TestCases({ tests }: { tests: TaskCoverage['tests'] }) {
+const KIND_ORDER = { automated: 0, pending: 1, manual: 2 };
+
+function CasesTable(props: {
+  taskKey: string;
+  cases: TaskCase[];
+  readOnly: boolean;
+  onManualResult: (target: ManualTarget) => void;
+}) {
+  const cases = [...props.cases].sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
   return (
-    <Box sx={{ py: 1.5, pl: { sm: 7 } }}>
+    <Box sx={{ py: 1.5, pl: { sm: 6 } }}>
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        Casos de prueba (última ejecución)
+        Casos de prueba
       </Typography>
       <Table size="small">
         <TableBody>
-          {tests.map((test) => (
-            <TableRow key={test.title}>
-              <TableCell sx={{ border: 0 }}>{test.description}</TableCell>
-              <TableCell sx={{ border: 0, width: 120 }}>
-                <TestStateChip state={test.state} />
+          {cases.map((caso) => (
+            <TableRow key={`${caso.kind}-${caso.description}`}>
+              <TableCell sx={{ border: 0 }}>
+                {caso.description}
+                {caso.reason && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {caso.reason}
+                  </Typography>
+                )}
               </TableCell>
-              <TableCell sx={{ border: 0, width: 80 }} align="right">
-                {formatDuration(test.durationMs)}
+              <TableCell sx={{ border: 0, width: 150 }}>
+                <CaseKindChip kind={caso.kind} />
               </TableCell>
-              <TableCell sx={{ border: 0, width: 110 }}>
-                <Typography variant="caption" color="text.secondary">
-                  {test.group === 'regression' ? 'En regresión' : test.group}
-                </Typography>
+              <TableCell sx={{ border: 0, width: 140 }}>
+                <TaskResultChip result={caso.result} />
+              </TableCell>
+              <TableCell sx={{ border: 0, width: 230 }}>
+                <CaseDetail caso={caso} />
+              </TableCell>
+              <TableCell sx={{ border: 0, width: 110 }} align="right">
+                {caso.kind !== 'automated' && !props.readOnly && (
+                  <Button
+                    size="small"
+                    onClick={() =>
+                      props.onManualResult({
+                        type: 'case',
+                        taskKey: props.taskKey,
+                        description: caso.description,
+                        result: caso.result === 'notRun' ? 'pending' : caso.result,
+                        comment: caso.manual?.comment ?? '',
+                      })
+                    }
+                  >
+                    Registrar
+                  </Button>
+                )}
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
     </Box>
+  );
+}
+
+function CaseDetail({ caso }: { caso: TaskCase }) {
+  if (caso.kind === 'automated') {
+    return (
+      <Typography variant="caption" color="text.secondary">
+        {caso.result === 'notRun'
+          ? 'No corrió en la última ejecución'
+          : `${formatDuration(caso.durationMs)} · ${caso.group === 'regression' ? 'en regresión' : caso.group}`}
+      </Typography>
+    );
+  }
+  if (!caso.manual?.testedAt) {
+    return (
+      <Typography variant="caption" color="text.secondary">
+        Se prueba a mano
+      </Typography>
+    );
+  }
+  return (
+    <Typography variant="caption" color="text.secondary">
+      {caso.manual.testedBy} · {formatDateTime(caso.manual.testedAt)}
+      {caso.manual.comment && (
+        <Box component="span" sx={{ display: 'block' }}>
+          «{caso.manual.comment}»
+        </Box>
+      )}
+    </Typography>
   );
 }

@@ -163,6 +163,20 @@ export function useSetManualResult(sprintId: string) {
   });
 }
 
+/** Resultado manual de un caso concreto (pendiente o manual) de una tarea. */
+export function useSetManualCaseResult(sprintId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      taskKey: string;
+      caseDescription: string;
+      result: ManualResult;
+      comment: string;
+    }) => api(`/sprints/${sprintId}/cases/manual-result`, { method: 'PUT', body: data }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.sprints }),
+  });
+}
+
 // ---------- Ejecuciones ----------
 
 export interface RunFilters {

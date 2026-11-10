@@ -59,7 +59,15 @@ export const updateTaskBody = z
 
 export const taskParams = z.object({ id: objectId, taskId: objectId });
 
-/** Resultado de la prueba manual de una tarea. */
+/** Resultado manual de un caso concreto (pendiente o manual) de una tarea. */
+export const manualCaseResultBody = z.object({
+  taskKey: jiraKey,
+  caseDescription: z.string().trim().min(1).max(500),
+  result: z.enum(['pending', 'passed', 'failed']),
+  comment: z.string().trim().max(500).optional(),
+});
+
+/** Resultado de la prueba manual de una tarea (tareas sin casos en Cypress). */
 export const manualResultBody = z.object({
   result: z.enum(['pending', 'passed', 'failed']),
   comment: z.string().trim().max(500).optional(),

@@ -35,18 +35,29 @@ export function createMockProvider() {
       schedule(RUNNING_AFTER_MS, () => send({ ...base, status: 'running' }));
       schedule(FINISHED_AFTER_MS, async () => {
         const titles = await buildTitles(suite, sprintNumber);
-        const tests = titles.map((title) => ({
-          title,
-          group: suite === 'sprint' ? `sprint-${base.sprintId}` : 'regression',
-          state: Math.random() < FAILURE_PROBABILITY ? 'failed' : 'passed',
-          durationMs: 1000 + Math.round(Math.random() * 4000),
-        }));
+        const tests = titles.map((title) => {
+          // Los casos pendiente()/manual() no se ejecutan: Cypress los reporta como "pending".
+          const omitido = /^\[(PENDIENTE|MANUAL)\]/.test(title);
+          return {
+            title,
+            group: suite === 'sprint' ? `sprint-${base.sprintId}` : 'regression',
+            state: omitido ? 'pending' : Math.random() < FAILURE_PROBABILITY ? 'failed' : 'passed',
+            durationMs: omitido ? 0 : 1000 + Math.round(Math.random() * 4000),
+          };
+        });
         const failed = tests.filter((test) => test.state === 'failed').length;
+        const ejecutadas = tests.filter((test) => test.state !== 'pending').length;
         const durationMs = tests.reduce((sum, test) => sum + test.durationMs, 0);
         await send({
           ...base,
           status: failed > 0 ? 'failed' : 'passed',
-          stats: { total: tests.length, passed: tests.length - failed, failed, durationMs },
+          stats: {
+            total: tests.length,
+            passed: ejecutadas - failed,
+            failed,
+            pending: tests.length - ejecutadas,
+            durationMs,
+          },
           tests,
           startedAt: new Date(Date.now() - durationMs),
           finishedAt: new Date(),
@@ -58,12 +69,23 @@ export function createMockProvider() {
   };
 }
 
-/** Pruebas simuladas: una por tarea del sprint, excepto la última (para ver tareas sin cobertura). */
+/**
+ * Casos simulados del sprint, como los reportaría Cypress:
+ * la primera tarea con 2 casos automatizados, las intermedias con 1 automatizado y
+ * 1 pendiente, y la última solo con un caso manual.
+ */
 async function buildTitles(suite, sprintNumber) {
   if (suite !== 'sprint') return REGRESSION_TESTS;
   const sprint = await Sprint.findOne({ number: sprintNumber });
   const tasks = sprint?.tasks ?? [];
-  return tasks.slice(0, Math.max(tasks.length - 1, 1)).map((task) => `${task.key} ${task.title}`);
+  return tasks.flatMap((task, i) => {
+    const nombre = `${task.key} ${task.title}`;
+    if (i === tasks.length - 1 && tasks.length > 1) {
+      return [`[MANUAL] ${nombre} (verificación manual) — se prueba a mano (simulado)`];
+    }
+    if (i === 0) return [nombre, `${nombre} (validaciones)`];
+    return [nombre, `[PENDIENTE] ${nombre} (casos borde) — falta desplegar en PRE (simulado)`];
+  });
 }
 
 function schedule(delay, fn) {

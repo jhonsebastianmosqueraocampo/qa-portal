@@ -7,7 +7,8 @@ import { env } from '../src/config/env.js';
 import { Run } from '../src/models/Run.js';
 import { Sprint } from '../src/models/Sprint.js';
 import { User } from '../src/models/User.js';
-import { describeTest, extractJiraKeys } from '../src/utils/jira.js';
+import { extractJiraKeys, parseTestTitle } from '../src/utils/jira.js';
+import { ManualCaseResult } from '../src/models/ManualCaseResult.js';
 
 if (env.NODE_ENV === 'production') {
   console.error('El seed no se ejecuta en producción.');
@@ -35,6 +36,10 @@ const SPRINT_02_TESTS = [
   'UA-004 cierra sesión y vuelve al login',
   'UA-005 no permite volver al área segura tras cerrar sesión',
   'UA-005 muestra el mensaje de sesión cerrada',
+  // Casos que Cypress no ejecuta pero reporta (ver qa-automation/cypress/support/casos.js)
+  '[PENDIENTE] UA-005 cierra sesión en dos pestañas a la vez — falta desplegar en PRE',
+  '[MANUAL] UA-010 recibe el correo de recuperación de contraseña — necesita un buzón de pruebas',
+  '[MANUAL] UA-010 el enlace de recuperación caduca a las 24 h — requiere esperar 24 h',
 ];
 
 /** Fecha "de día" (medianoche UTC) desplazada N días desde hoy, como las guarda el portal. */
@@ -50,18 +55,25 @@ function task(key, title) {
 /** Construye un documento de ejecución con fecha en el pasado. */
 function buildRun({ suite, sprint, daysAgo, titles, failIndexes = [], trigger = 'nightly' }) {
   const finishedAt = new Date(Date.now() - daysAgo * DAY);
-  const tests = titles.map((title, index) => ({
-    title,
-    description: describeTest(title),
-    jiraKeys: extractJiraKeys(title),
-    group: sprint ? sprint.folder : 'regression',
-    file: sprint
-      ? `cypress/e2e/sprints/${sprint.folder}/logout.cy.js`
-      : 'cypress/e2e/regression/login.cy.js',
-    state: failIndexes.includes(index) ? 'failed' : 'passed',
-    durationMs: 1500 + ((index * 997 + daysAgo * 131) % 3500),
-  }));
+  const tests = titles.map((title, index) => {
+    const caso = parseTestTitle(title);
+    const ejecutada = caso.kind === 'automated';
+    return {
+      title,
+      description: caso.description,
+      kind: caso.kind,
+      reason: caso.reason,
+      jiraKeys: extractJiraKeys(caso.name),
+      group: sprint ? sprint.folder : 'regression',
+      file: sprint
+        ? `cypress/e2e/sprints/${sprint.folder}/logout.cy.js`
+        : 'cypress/e2e/regression/login.cy.js',
+      state: !ejecutada ? 'pending' : failIndexes.includes(index) ? 'failed' : 'passed',
+      durationMs: ejecutada ? 1500 + ((index * 997 + daysAgo * 131) % 3500) : 0,
+    };
+  });
   const failed = tests.filter((test) => test.state === 'failed').length;
+  const pending = tests.filter((test) => test.state === 'pending').length;
   const durationMs = tests.reduce((sum, test) => sum + test.durationMs, 0);
 
   const doc = new Run({
@@ -70,7 +82,13 @@ function buildRun({ suite, sprint, daysAgo, titles, failIndexes = [], trigger = 
     sprintNumber: sprint?.number ?? null,
     status: failed ? 'failed' : 'passed',
     trigger,
-    stats: { total: tests.length, passed: tests.length - failed, failed, durationMs },
+    stats: {
+      total: tests.length,
+      passed: tests.length - failed - pending,
+      failed,
+      pending,
+      durationMs,
+    },
     tests,
     reportUrl: '',
     ci: { provider: 'seed', pipelineId: `seed-${suite}-${daysAgo}` },
@@ -82,7 +100,7 @@ function buildRun({ suite, sprint, daysAgo, titles, failIndexes = [], trigger = 
 
 await connectDb(env.MONGODB_URI);
 
-await Promise.all([Sprint.deleteMany({}), Run.deleteMany({})]);
+await Promise.all([Sprint.deleteMany({}), Run.deleteMany({}), ManualCaseResult.deleteMany({})]);
 
 // Usuario administrador (se actualiza la contraseña si ya existía)
 let admin = await User.findOne({ email: SEED_ADMIN_EMAIL.toLowerCase() });
@@ -131,14 +149,8 @@ const [, sprint2] = await Sprint.create([
     tasks: [
       task('UA-004', 'Cerrar sesión'),
       task('UA-005', 'Proteger el área segura tras cerrar sesión'),
-      {
-        ...task('UA-010', 'Recuperar contraseña'),
-        // Tarea manual (no tiene prueba en Cypress) ya probada a mano
-        manualResult: 'passed',
-        manualComment: 'Probado en Chrome y Edge',
-        manualTestedAt: day(-1),
-        manualTestedBy: admin._id,
-      },
+      // Tarea con casos manuales (declarados con manual() en Cypress)
+      task('UA-010', 'Recuperar contraseña'),
     ],
   },
   {
@@ -182,6 +194,17 @@ runs.push(
 );
 // Inserción directa a la colección para conservar las fechas pasadas (Mongoose pondría "ahora").
 await Run.collection.insertMany(runs);
+
+// Resultado manual de uno de los casos manuales de UA-010 (el otro queda sin probar).
+await ManualCaseResult.create({
+  sprint: sprint2._id,
+  taskKey: 'UA-010',
+  caseDescription: 'recibe el correo de recuperación de contraseña',
+  result: 'passed',
+  comment: 'Correo recibido en el buzón de pruebas',
+  testedAt: day(-1),
+  testedBy: admin._id,
+});
 
 console.log(`Seed listo: 3 sprints, ${runs.length} ejecuciones, usuario admin ${admin.email}`);
 await disconnectDb();

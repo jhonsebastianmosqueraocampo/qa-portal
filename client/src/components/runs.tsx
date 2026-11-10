@@ -21,6 +21,7 @@ import { formatDateTime, formatDuration } from '../utils/format';
 import { EmptyState, ExternalLink } from './common';
 import { useNotify } from './notify';
 import { RunStatusChip, TestStateChip } from './StatusChips';
+import { CaseKindChip } from './TaskResults';
 import { TRIGGER_LABEL } from '../utils/labels';
 
 /** Botón "Ejecutar pruebas". No ejecuta nada en el navegador: pide al backend que dispare el CI. */
@@ -156,9 +157,20 @@ export function RunTestsTable({ tests }: { tests?: TestResult[] }) {
               <TableCell sx={{ fontFamily: 'monospace' }}>
                 {test.jiraKeys.join(', ') || '—'}
               </TableCell>
-              <TableCell>{test.description}</TableCell>
               <TableCell>
-                <TestStateChip state={test.state} />
+                {test.description}
+                {test.reason && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {test.reason}
+                  </Typography>
+                )}
+              </TableCell>
+              <TableCell>
+                {test.kind && test.kind !== 'automated' ? (
+                  <CaseKindChip kind={test.kind} />
+                ) : (
+                  <TestStateChip state={test.state} />
+                )}
               </TableCell>
               <TableCell align="right">{formatDuration(test.durationMs)}</TableCell>
             </TableRow>

@@ -19,6 +19,7 @@ import { useRuns, type RunFilters } from '../api/hooks';
 import { formatDateTime, formatDuration } from '../utils/format';
 import { EmptyState, ErrorState, ExternalLink, Loading } from './common';
 import { RunStatusChip } from './StatusChips';
+import { ejecutadas } from '../utils/casos';
 import { TRIGGER_LABEL } from '../utils/labels';
 
 /** Historial de ejecuciones con filtros (estado, fechas) y paginación del lado del servidor. */
@@ -145,7 +146,9 @@ export function RunHistory(props: {
                       <RunStatusChip status={run.status} />
                     </TableCell>
                     <TableCell align="right">
-                      {run.stats.total ? `${run.stats.passed} / ${run.stats.total}` : '—'}
+                      {ejecutadas(run.stats)
+                        ? `${run.stats.passed} / ${ejecutadas(run.stats)}`
+                        : '—'}
                     </TableCell>
                     <TableCell align="right">{formatDuration(run.stats.durationMs)}</TableCell>
                     {/* stopPropagation: abrir el reporte no debe navegar también al detalle */}

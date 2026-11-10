@@ -2,7 +2,7 @@ import { env } from '../config/env.js';
 import { FINAL_STATUSES, Run } from '../models/Run.js';
 import { Sprint } from '../models/Sprint.js';
 import { AppError } from '../utils/AppError.js';
-import { describeTest, extractJiraKeys } from '../utils/jira.js';
+import { extractJiraKeys, parseTestTitle } from '../utils/jira.js';
 import { ciProvider } from './ci/index.js';
 
 // Registro en la terminal de la API (silencioso durante las pruebas automatizadas).
@@ -130,15 +130,20 @@ export async function applyCiResult(payload) {
     run.startedAt = run.startedAt ?? new Date();
   } else {
     if (payload.stats) run.stats = payload.stats;
-    run.tests = payload.tests.map((test) => ({
-      title: test.title,
-      description: describeTest(test.title),
-      jiraKeys: extractJiraKeys(test.title),
-      group: test.group ?? 'regression',
-      file: test.file ?? '',
-      state: test.state,
-      durationMs: test.durationMs ?? 0,
-    }));
+    run.tests = payload.tests.map((test) => {
+      const parsed = parseTestTitle(test.title);
+      return {
+        title: test.title,
+        description: parsed.description,
+        kind: parsed.kind,
+        reason: parsed.reason,
+        jiraKeys: extractJiraKeys(parsed.name),
+        group: test.group ?? 'regression',
+        file: test.file ?? '',
+        state: test.state,
+        durationMs: test.durationMs ?? 0,
+      };
+    });
     run.startedAt = payload.startedAt ?? run.startedAt;
     run.finishedAt = payload.finishedAt ?? new Date();
   }

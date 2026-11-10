@@ -18,7 +18,7 @@ import { SprintFormDialog } from '../components/SprintFormDialog';
 import { SprintTasksTable } from '../components/SprintTasksTable';
 import { SprintStatusChip } from '../components/StatusChips';
 import { TaskFormDialog } from '../components/TaskFormDialog';
-import { ManualResultDialog } from '../components/TaskResults';
+import { ManualResultDialog, type ManualTarget } from '../components/TaskResults';
 import { formatSprintDates } from '../utils/format';
 
 export function SprintDetailPage() {
@@ -31,7 +31,7 @@ export function SprintDetailPage() {
   const [editingSprint, setEditingSprint] = useState(false);
   const [taskDialog, setTaskDialog] = useState<{ task?: Task } | null>(null);
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
-  const [manualTask, setManualTask] = useState<Task | null>(null);
+  const [manualTarget, setManualTarget] = useState<ManualTarget | null>(null);
 
   if (isPending) return <Loading />;
   if (error) return <ErrorState error={error} onRetry={() => refetch()} />;
@@ -120,7 +120,7 @@ export function SprintDetailPage() {
             readOnly={readOnly}
             onEdit={(task) => setTaskDialog({ task })}
             onDelete={setTaskToDelete}
-            onManualResult={setManualTask}
+            onManualResult={setManualTarget}
           />
         )}
       </Section>
@@ -155,11 +155,11 @@ export function SprintDetailPage() {
           onClose={() => setTaskDialog(null)}
         />
       )}
-      {manualTask && (
+      {manualTarget && (
         <ManualResultDialog
           sprintId={sprint._id}
-          task={manualTask}
-          onClose={() => setManualTask(null)}
+          target={manualTarget}
+          onClose={() => setManualTarget(null)}
         />
       )}
       <ConfirmDialog
@@ -175,37 +175,47 @@ export function SprintDetailPage() {
 }
 
 function TestSummary({ coverage }: { coverage: Coverage }) {
+  const { cases } = coverage;
+  const bloques = [
+    {
+      titulo: 'Automatizados (Cypress)',
+      total: cases.automated.total,
+      detalle: `${cases.automated.passed} pasaron · ${cases.automated.failed} fallaron en la última ejecución`,
+    },
+    {
+      titulo: 'Por automatizar',
+      total: cases.pending.total,
+      detalle: `Mientras tanto a mano: ${cases.pending.passed} pasaron · ${cases.pending.failed} fallaron · ${cases.pending.pending} sin probar`,
+    },
+    {
+      titulo: 'Manuales',
+      total: cases.manual.total,
+      detalle: `${cases.manual.passed} pasaron · ${cases.manual.failed} fallaron · ${cases.manual.pending} sin probar`,
+    },
+  ];
+  const sinCasos = coverage.tasks.filter((t) => t.type === 'none').length;
+
   return (
     <>
       <Grid container spacing={3}>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <Typography variant="body2" color="text.secondary">
-            Automatizadas (Cypress)
-          </Typography>
-          <Typography sx={{ fontSize: '1.6rem', fontWeight: 700 }}>
-            {coverage.automated.total} de {coverage.totalTasks}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {coverage.automated.passed} pasaron · {coverage.automated.failed} fallaron (última
-            ejecución)
-          </Typography>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <Typography variant="body2" color="text.secondary">
-            Manuales
-          </Typography>
-          <Typography sx={{ fontSize: '1.6rem', fontWeight: 700 }}>
-            {coverage.manual.total} de {coverage.totalTasks}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {coverage.manual.passed} pasaron · {coverage.manual.failed} fallaron ·{' '}
-            {coverage.manual.pending ?? 0} pendientes
-          </Typography>
-        </Grid>
+        {bloques.map((b) => (
+          <Grid key={b.titulo} size={{ xs: 12, md: 4 }}>
+            <Typography variant="body2" color="text.secondary">
+              {b.titulo}
+            </Typography>
+            <Typography sx={{ fontSize: '1.6rem', fontWeight: 700 }}>
+              {b.total} {b.total === 1 ? 'caso' : 'casos'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {b.detalle}
+            </Typography>
+          </Grid>
+        ))}
       </Grid>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-        Una tarea es automatizada cuando alguna prueba de Cypress empieza con su ID (p. ej. «UA-123
-        …»); puede tener varios casos de prueba y pasa solo si todos pasan. Las demás son manuales.
+        {cases.total} casos en {coverage.totalTasks} tareas
+        {sinCasos > 0 && ` · ${sinCasos} tarea(s) aún sin casos en Cypress`}. El tipo de cada caso
+        viene de qa-automation: it() automatizado, pendiente() por automatizar y manual() manual.
       </Typography>
     </>
   );

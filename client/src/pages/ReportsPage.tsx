@@ -28,6 +28,7 @@ import type { RunGroupSummary, SprintReport } from '../api/types';
 import { EmptyState, ErrorState, ExternalLink, Loading, PageHeader } from '../components/common';
 import { RunStatusChip, SprintStatusChip } from '../components/StatusChips';
 import { formatDateTime, formatSprintDates } from '../utils/format';
+import { ejecutadas, resumenCasos } from '../utils/casos';
 import { TRIGGER_LABEL } from '../utils/labels';
 
 /** Cuántas ejecuciones se listan por sprint en el informe (el resto, en la página del sprint). */
@@ -83,16 +84,13 @@ function SprintReportAccordion({ report }: { report: SprintReport }) {
           </Typography>
           <Stack direction="row" spacing={1}>
             <SuccessChip rate={sprintRuns.successRate} />
-            <Chip
-              label={`${tasks.automated.total} automatizadas · ${tasks.manual.total} manuales`}
-              variant="outlined"
-            />
+            <Chip label={resumenCasos(report.cases)} variant="outlined" />
           </Stack>
         </Stack>
       </AccordionSummary>
 
       <AccordionDetails>
-        <TaskTiles tasks={tasks} />
+        <CaseTiles tasks={tasks} cases={report.cases} />
 
         <Box sx={{ mt: 3 }}>
           <Typography variant="h2" sx={{ mb: 0.5 }}>
@@ -176,57 +174,68 @@ function SprintReportAccordion({ report }: { report: SprintReport }) {
   );
 }
 
-function TaskTiles({ tasks }: { tasks: SprintReport['tasks'] }) {
-  const manualTested = tasks.manual.passed + tasks.manual.failed;
+function CaseTiles({ tasks, cases }: Pick<SprintReport, 'tasks' | 'cases'>) {
+  const aMano = cases.pending.total + cases.manual.total;
+  const probadasAMano =
+    cases.pending.passed + cases.pending.failed + cases.manual.passed + cases.manual.failed;
   const tiles = [
-    { label: 'Total de tareas', value: tasks.total },
     {
-      label: 'Automatizadas (Cypress)',
-      value: tasks.automated.total,
-      detail: `${tasks.automated.passed} pasaron · ${tasks.automated.failed} fallaron`,
+      label: 'Tareas',
+      value: tasks.total,
+      detail: tasks.withoutCases
+        ? `${tasks.withoutCases} sin casos en Cypress`
+        : `${cases.total} casos`,
+    },
+    {
+      label: 'Casos automatizados',
+      value: cases.automated.total,
+      detail: `${cases.automated.passed} pasaron · ${cases.automated.failed} fallaron`,
+    },
+    {
+      label: 'Por automatizar',
+      value: cases.pending.total,
+      detail: `${cases.pending.passed + cases.pending.failed} probados a mano`,
     },
     {
       label: 'Manuales',
-      value: tasks.manual.total,
-      detail: `${tasks.manual.passed} pasaron · ${tasks.manual.failed} fallaron · ${tasks.manual.pending ?? 0} pendientes`,
-      progress: tasks.manual.total
-        ? Math.round((manualTested / tasks.manual.total) * 100)
-        : undefined,
+      value: cases.manual.total,
+      detail: `${cases.manual.passed} pasaron · ${cases.manual.failed} fallaron · ${cases.manual.pending} sin probar`,
     },
   ];
+  const progreso = aMano ? Math.round((probadasAMano / aMano) * 100) : null;
 
   return (
-    <Grid container spacing={2}>
-      {tiles.map((tile) => (
-        <Grid key={tile.label} size={{ xs: 12, sm: 4 }}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography variant="body2" color="text.secondary">
-                {tile.label}
-              </Typography>
-              <Typography sx={{ fontSize: '1.6rem', fontWeight: 700 }}>{tile.value}</Typography>
-              {tile.detail && (
+    <>
+      <Grid container spacing={2}>
+        {tiles.map((tile) => (
+          <Grid key={tile.label} size={{ xs: 6, md: 3 }}>
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="body2" color="text.secondary">
+                  {tile.label}
+                </Typography>
+                <Typography sx={{ fontSize: '1.6rem', fontWeight: 700 }}>{tile.value}</Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                   {tile.detail}
                 </Typography>
-              )}
-              {tile.progress !== undefined && (
-                <>
-                  <LinearProgress
-                    variant="determinate"
-                    value={tile.progress}
-                    sx={{ height: 6, borderRadius: 3, mt: 1 }}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {tile.progress}% probadas a mano
-                  </Typography>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-      ))}
-    </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+      {progreso !== null && (
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Pruebas a mano (por automatizar + manuales): {probadasAMano} de {aMano} registradas
+          </Typography>
+          <LinearProgress
+            variant="determinate"
+            value={progreso}
+            sx={{ height: 6, borderRadius: 3, mt: 0.5 }}
+          />
+        </Box>
+      )}
+    </>
   );
 }
 
@@ -274,7 +283,7 @@ function RunsTable({ group }: { group: RunGroupSummary }) {
                 <RunStatusChip status={run.status} />
               </TableCell>
               <TableCell align="right">
-                {run.stats.passed} / {run.stats.total}
+                {run.stats.passed} / {ejecutadas(run.stats)}
               </TableCell>
               <TableCell align="right">
                 {run.successRate === null ? '—' : `${run.successRate}%`}

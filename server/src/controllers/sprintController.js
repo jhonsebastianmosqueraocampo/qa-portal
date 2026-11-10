@@ -1,3 +1,4 @@
+import { ManualCaseResult } from '../models/ManualCaseResult.js';
 import { Run } from '../models/Run.js';
 import { Sprint } from '../models/Sprint.js';
 import { getSprintCoverage } from '../services/coverageService.js';
@@ -96,6 +97,7 @@ export async function remove(req, res) {
   const sprint = await findSprintOr404(req.valid.params.id);
   // El historial de ejecuciones se conserva (es evidencia); solo se desvincula del sprint.
   await Run.updateMany({ sprint: sprint._id }, { $set: { sprint: null } });
+  await ManualCaseResult.deleteMany({ sprint: sprint._id });
   await sprint.deleteOne();
   res.status(204).end();
 }
@@ -147,6 +149,39 @@ export async function setManualResult(req, res) {
   });
   await sprint.save();
   res.json({ task });
+}
+
+/**
+ * Registra el resultado manual de un caso (pendiente o manual) de una tarea.
+ * Solo se aceptan casos que existen en la última ejecución del sprint y no son automatizados.
+ */
+export async function setManualCaseResult(req, res) {
+  const sprint = await findSprintOr404(req.valid.params.id);
+  assertOpen(sprint);
+  const { taskKey, caseDescription, result, comment = '' } = req.valid.body;
+
+  const coverage = await getSprintCoverage(sprint);
+  const task = coverage.tasks.find((t) => t.key === taskKey);
+  if (!task) throw new AppError(404, `La tarea ${taskKey} no está en este sprint`);
+  const caso = task.cases.find((c) => c.description === caseDescription);
+  if (!caso)
+    throw new AppError(404, 'Caso no encontrado. Ejecuta las pruebas del sprint para cargarlo');
+  if (caso.kind === 'automated') {
+    throw new AppError(409, 'Este caso está automatizado: su resultado lo da Cypress');
+  }
+
+  const pending = result === 'pending';
+  const saved = await ManualCaseResult.findOneAndUpdate(
+    { sprint: sprint._id, taskKey, caseDescription },
+    {
+      result,
+      comment,
+      testedAt: pending ? null : new Date(),
+      testedBy: pending ? null : req.user._id,
+    },
+    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
+  );
+  res.json({ result: saved });
 }
 
 export async function removeTask(req, res) {

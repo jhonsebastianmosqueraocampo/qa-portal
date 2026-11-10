@@ -20,6 +20,7 @@ import {
   createSprintBody,
   createTaskBody,
   listSprintsQuery,
+  manualCaseResultBody,
   manualResultBody,
   taskParams,
   updateSprintBody,
@@ -75,6 +76,12 @@ router.put(
   '/sprints/:id/tasks/:taskId/manual-result',
   validate({ params: taskParams, body: manualResultBody }),
   sprints.setManualResult,
+);
+
+router.put(
+  '/sprints/:id/cases/manual-result',
+  validate({ params: idParams, body: manualCaseResultBody }),
+  sprints.setManualCaseResult,
 );
 
 router.get('/runs', validate({ query: listRunsQuery }), runs.list);
